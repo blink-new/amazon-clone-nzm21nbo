@@ -1,11 +1,13 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Star, Shield, CheckCircle, Heart, Share2, AlertTriangle, MessageCircle, Clock } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar'
+import { useAuth } from '../hooks/useAuth'
+import { blink } from '../blink/client'
 
 interface AccountDetailsProps {
   onAddToCart: (account: any) => void
@@ -13,10 +15,120 @@ interface AccountDetailsProps {
 
 export default function AccountDetails({ onAddToCart }: AccountDetailsProps) {
   const { id } = useParams()
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const [selectedImage, setSelectedImage] = useState(0)
+  const [account, setAccount] = useState<any>(null)
+  const [seller, setSeller] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Mock account data - in real app, fetch based on ID
-  const account = {
+  const loadAccount = useCallback(async () => {
+    if (!id) return
+
+    try {
+      setLoading(true)
+      
+      // Load account data
+      const accounts = await blink.db.robloxAccounts.list({
+        where: { id },
+        limit: 1
+      })
+
+      if (accounts.length === 0) {
+        navigate('/accounts')
+        return
+      }
+
+      const accountData = accounts[0]
+      
+      // Load seller data
+      const sellers = await blink.db.users.list({
+        where: { userId: accountData.sellerId },
+        limit: 1
+      })
+
+      const sellerData = sellers[0]
+
+      setAccount({
+        ...accountData,
+        images: JSON.parse(accountData.images || '[]'),
+        items: JSON.parse(accountData.items || '[]'),
+        price: Number(accountData.price)
+      })
+
+      setSeller(sellerData)
+    } catch (error) {
+      console.error('Error loading account:', error)
+      navigate('/accounts')
+    } finally {
+      setLoading(false)
+    }
+  }, [id, navigate])
+
+  useEffect(() => {
+    loadAccount()
+  }, [loadAccount])
+
+  const handlePurchase = async () => {
+    if (!user) {
+      alert('Please sign in to purchase an account')
+      return
+    }
+
+    if (!account) return
+
+    try {
+      // Create transaction
+      await blink.db.transactions.create({
+        id: `txn_${Date.now()}`,
+        buyerId: user.id,
+        sellerId: account.sellerId,
+        accountId: account.id,
+        amount: account.price,
+        status: 'pending',
+        escrowStatus: 'holding'
+      })
+
+      // Update account status
+      await blink.db.robloxAccounts.update(account.id, {
+        status: 'pending'
+      })
+
+      alert('Purchase initiated! Your payment is being held in escrow. You will receive account details once the seller confirms the transfer.')
+      navigate('/accounts')
+    } catch (error) {
+      console.error('Error creating purchase:', error)
+      alert('Failed to initiate purchase. Please try again.')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading account details...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!account) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Account Not Found</h2>
+          <p className="text-gray-600 mb-4">The account you're looking for doesn't exist or has been removed.</p>
+          <Button onClick={() => navigate('/accounts')}>
+            Browse Other Accounts
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Mock data for features not yet implemented
+  const mockAccount = {
     id: 1,
     game: 'Adopt Me!',
     title: 'Mega Neon Shadow Dragon + Rare Pets Collection',
@@ -138,6 +250,27 @@ export default function AccountDetails({ onAddToCart }: AccountDetailsProps) {
                       <p className="text-gray-600 leading-relaxed">
                         {account.description}
                       </p>
+                      <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                        <h4 className="font-medium text-blue-900 mb-2">Account Details</h4>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-blue-700">Username:</span>
+                            <span className="ml-2 font-medium">@{account.robloxUsername}</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">Level:</span>
+                            <span className="ml-2 font-medium">{account.accountLevel}</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">Robux:</span>
+                            <span className="ml-2 font-medium">{account.robuxAmount?.toLocaleString() || 0}</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">Premium:</span>
+                            <span className="ml-2 font-medium">{account.premiumStatus === 'active' ? 'Yes' : 'No'}</span>
+                          </div>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-2 gap-4 mt-6">
                         <div className="flex items-center">
                           <Shield className="w-5 h-5 text-green-500 mr-2" />
@@ -168,12 +301,12 @@ export default function AccountDetails({ onAddToCart }: AccountDetailsProps) {
                             <div className="flex items-center">
                               <CheckCircle className="w-4 h-4 text-green-500 mr-3" />
                               <div>
-                                <p className="font-medium">{item.name}</p>
-                                <p className="text-sm text-gray-500">{item.rarity}</p>
+                                <p className="font-medium">{item}</p>
+                                <p className="text-sm text-gray-500">Included Item</p>
                               </div>
                             </div>
-                            <Badge variant="outline" className="text-green-600 border-green-600">
-                              {item.value}
+                            <Badge variant="outline" className="text-blue-600 border-blue-600">
+                              ✓ Included
                             </Badge>
                           </div>
                         ))}
@@ -247,7 +380,7 @@ export default function AccountDetails({ onAddToCart }: AccountDetailsProps) {
             <Card className="sticky top-8">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <Badge className="bg-primary text-white">{account.game}</Badge>
+                  <Badge className="bg-primary text-white">{account.gameCategory}</Badge>
                   <div className="flex items-center space-x-2">
                     <Button variant="outline" size="sm">
                       <Heart className="w-4 h-4" />
@@ -278,8 +411,13 @@ export default function AccountDetails({ onAddToCart }: AccountDetailsProps) {
                   >
                     Add to Cart - ${account.price}
                   </Button>
-                  <Button variant="outline" className="w-full">
-                    Buy Now with Escrow
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={handlePurchase}
+                    disabled={account.status !== 'active'}
+                  >
+                    {account.status === 'active' ? 'Buy Now with Escrow' : 'Account Unavailable'}
                   </Button>
                 </div>
 
@@ -317,31 +455,29 @@ export default function AccountDetails({ onAddToCart }: AccountDetailsProps) {
               <CardContent className="space-y-4">
                 <div className="flex items-center space-x-3">
                   <Avatar className="w-12 h-12">
-                    <AvatarImage src={account.seller.avatar} />
-                    <AvatarFallback>{account.seller.username[0]}</AvatarFallback>
+                    <AvatarImage src={seller?.avatarUrl} />
+                    <AvatarFallback>{seller?.displayName?.[0] || 'U'}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
                     <div className="flex items-center">
-                      <h3 className="font-semibold">{account.seller.username}</h3>
-                      {account.seller.verified && (
-                        <CheckCircle className="w-4 h-4 text-green-500 ml-2" />
-                      )}
+                      <h3 className="font-semibold">{seller?.displayName || 'Unknown Seller'}</h3>
+                      <CheckCircle className="w-4 h-4 text-green-500 ml-2" />
                     </div>
                     <div className="flex items-center">
                       <Star className="w-4 h-4 text-yellow-500 mr-1" />
-                      <span className="text-sm">{account.seller.rating} ({account.seller.totalSales} sales)</span>
+                      <span className="text-sm">Trust Score: {seller?.trustScore || 100}%</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <p className="text-gray-500">Member Since</p>
-                    <p className="font-medium">{account.seller.memberSince}</p>
+                    <p className="text-gray-500">Total Sales</p>
+                    <p className="font-medium">{seller?.totalSales || 0}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Trust Score</p>
-                    <p className="font-medium">{account.trustScore}%</p>
+                    <p className="text-gray-500">Robux Amount</p>
+                    <p className="font-medium">{account.robuxAmount?.toLocaleString() || 0}</p>
                   </div>
                 </div>
 

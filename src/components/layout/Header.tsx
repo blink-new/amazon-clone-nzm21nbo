@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, ShoppingCart, Menu, X, Shield, Star, Users } from 'lucide-react'
+import { Search, ShoppingCart, Menu, X, Shield, Star, Users, LogIn, LogOut, User } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Badge } from '../ui/badge'
+import { useAuth } from '../../hooks/useAuth'
 
 interface HeaderProps {
   cartCount: number
@@ -12,6 +13,7 @@ interface HeaderProps {
 export default function Header({ cartCount }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const { user, loading, login, logout } = useAuth()
 
   const gameCategories = [
     'Adopt Me!',
@@ -97,8 +99,28 @@ export default function Header({ cartCount }: HeaderProps) {
 
             {/* Auth Buttons */}
             <div className="hidden sm:flex space-x-2">
-              <Button variant="outline" size="sm">Sign In</Button>
-              <Button size="sm" className="bg-accent hover:bg-accent/90">Sign Up</Button>
+              {loading ? (
+                <Button variant="outline" size="sm" disabled>Loading...</Button>
+              ) : user ? (
+                <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 px-3 py-1 bg-gray-100 rounded-md">
+                    <User className="w-4 h-4" />
+                    <span className="text-sm font-medium">{user.displayName}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {user.trustScore || 100}
+                    </Badge>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={logout}>
+                    <LogOut className="w-4 h-4 mr-1" />
+                    Sign Out
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" onClick={login}>
+                  <LogIn className="w-4 h-4 mr-1" />
+                  Sign In
+                </Button>
+              )}
             </div>
 
             {/* Mobile Menu Toggle */}
@@ -153,8 +175,28 @@ export default function Header({ cartCount }: HeaderProps) {
           <div className="px-4 py-4 space-y-4">
             {/* Mobile Auth */}
             <div className="flex space-x-2">
-              <Button variant="outline" size="sm" className="flex-1">Sign In</Button>
-              <Button size="sm" className="flex-1 bg-accent hover:bg-accent/90">Sign Up</Button>
+              {loading ? (
+                <Button variant="outline" size="sm" className="flex-1" disabled>Loading...</Button>
+              ) : user ? (
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center space-x-2">
+                    <User className="w-4 h-4" />
+                    <span className="text-sm font-medium">{user.displayName}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {user.trustScore || 100}
+                    </Badge>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={logout}>
+                    <LogOut className="w-4 h-4 mr-1" />
+                    Sign Out
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" className="flex-1" onClick={login}>
+                  <LogIn className="w-4 h-4 mr-1" />
+                  Sign In
+                </Button>
+              )}
             </div>
 
             {/* Mobile Categories */}

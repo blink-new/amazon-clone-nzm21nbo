@@ -1,117 +1,159 @@
-import { useState } from 'react'
-import { Search, Filter, Grid, List, Star, Shield, CheckCircle } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import { Search, Filter, Grid, List, Star, Shield, CheckCircle, Plus } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import { useAuth } from '../hooks/useAuth'
+import { blink } from '../blink/client'
+
+interface RobloxAccount {
+  id: string
+  sellerId: string
+  title: string
+  description: string
+  robloxUsername: string
+  gameCategory: string
+  price: number
+  images: string[]
+  items: string[]
+  accountLevel: number
+  robuxAmount: number
+  premiumStatus: string
+  status: string
+  verificationStatus: string
+  createdAt: string
+}
 
 export default function AccountListings() {
+  const { user } = useAuth()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [searchQuery, setSearchQuery] = useState('')
+  const [accounts, setAccounts] = useState<RobloxAccount[]>([])
+  const [loading, setLoading] = useState(true)
+  const [gameFilter, setGameFilter] = useState('all')
+  const [priceFilter, setPriceFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('newest')
 
-  const accounts = [
-    {
-      id: 1,
-      game: 'Adopt Me!',
-      title: 'Mega Neon Shadow Dragon + Rare Pets',
-      price: 299.99,
-      originalPrice: 399.99,
-      image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=300&fit=crop',
-      seller: 'ProTrader123',
-      rating: 4.9,
-      verified: true,
-      items: ['Mega Neon Shadow Dragon', 'Neon Frost Dragon', '500k+ AMC', '20+ Legendary Pets'],
-      trustScore: 98,
-      featured: true
-    },
-    {
-      id: 2,
-      game: 'Murder Mystery 2',
-      title: 'Complete Godly Collection',
-      price: 149.99,
-      originalPrice: 199.99,
-      image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=400&h=300&fit=crop',
-      seller: 'MM2Master',
-      rating: 5.0,
-      verified: true,
-      items: ['Chroma Luger', 'Chroma Shark', 'Elderwood Scythe', '15+ Godly Knives'],
-      trustScore: 100,
-      featured: true
-    },
-    {
-      id: 3,
-      game: 'Bloxburg',
-      title: 'Luxury Mansion + 10M Cash',
-      price: 89.99,
-      originalPrice: 119.99,
-      image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=400&h=300&fit=crop',
-      seller: 'BuilderPro',
-      rating: 4.8,
-      verified: true,
-      items: ['5-Story Mansion', '10M+ Cash', 'All Gamepasses', 'Premium Plot'],
-      trustScore: 95,
-      featured: false
-    },
-    {
-      id: 4,
-      game: 'Arsenal',
-      title: 'High Level Account + Skins',
-      price: 45.99,
-      originalPrice: 65.99,
-      image: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&h=300&fit=crop',
-      seller: 'ArsenalPro',
-      rating: 4.7,
-      verified: true,
-      items: ['Level 150+', '50+ Skins', 'Golden Knife', 'Rare Emotes'],
-      trustScore: 92,
-      featured: false
-    },
-    {
-      id: 5,
-      game: 'Jailbreak',
-      title: 'All Vehicles + 5M Cash',
-      price: 129.99,
-      originalPrice: 159.99,
-      image: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=400&h=300&fit=crop',
-      seller: 'JailbreakKing',
-      rating: 4.9,
-      verified: true,
-      items: ['All Limited Vehicles', '5M+ Cash', 'VIP Gamepass', 'Rare Textures'],
-      trustScore: 96,
-      featured: false
-    },
-    {
-      id: 6,
-      game: 'Royale High',
-      title: 'Rare Halo Collection',
-      price: 199.99,
-      originalPrice: 249.99,
-      image: 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=400&h=300&fit=crop',
-      seller: 'RoyaleQueen',
-      rating: 4.8,
-      verified: true,
-      items: ['5+ Rare Halos', '2M+ Diamonds', 'Rare Sets', 'Limited Items'],
-      trustScore: 94,
-      featured: false
-    }
-  ]
-
-  const games = ['All Games', 'Adopt Me!', 'Murder Mystery 2', 'Bloxburg', 'Arsenal', 'Jailbreak', 'Royale High']
+  const games = ['All Games', 'Adopt Me!', 'Murder Mystery 2', 'Bloxburg', 'Arsenal', 'Jailbreak', 'Royale High', 'Pet Simulator X', 'Brookhaven']
   const priceRanges = ['All Prices', '$0 - $50', '$50 - $100', '$100 - $200', '$200+']
-  const sortOptions = ['Featured', 'Price: Low to High', 'Price: High to Low', 'Newest', 'Best Rating']
+  const sortOptions = ['Newest', 'Price: Low to High', 'Price: High to Low', 'Most Popular']
+
+  const loadAccounts = useCallback(async () => {
+    try {
+      setLoading(true)
+      
+      // Build query filters
+      const filters: any = {
+        status: 'active',
+        verificationStatus: 'verified'
+      }
+
+      if (gameFilter !== 'all') {
+        filters.gameCategory = gameFilter
+      }
+
+      // Build order by
+      let orderBy: any = { createdAt: 'desc' }
+      if (sortBy === 'price-low') {
+        orderBy = { price: 'asc' }
+      } else if (sortBy === 'price-high') {
+        orderBy = { price: 'desc' }
+      }
+
+      const accountsData = await blink.db.robloxAccounts.list({
+        where: filters,
+        orderBy,
+        limit: 50
+      })
+
+      // Parse JSON fields and filter by price if needed
+      let processedAccounts = accountsData.map(account => ({
+        ...account,
+        images: JSON.parse(account.images || '[]'),
+        items: JSON.parse(account.items || '[]'),
+        price: Number(account.price)
+      }))
+
+      // Apply price filter
+      if (priceFilter !== 'all') {
+        processedAccounts = processedAccounts.filter(account => {
+          const price = account.price
+          switch (priceFilter) {
+            case '$0 - $50': return price <= 50
+            case '$50 - $100': return price > 50 && price <= 100
+            case '$100 - $200': return price > 100 && price <= 200
+            case '$200+': return price > 200
+            default: return true
+          }
+        })
+      }
+
+      // Apply search filter
+      if (searchQuery.trim()) {
+        processedAccounts = processedAccounts.filter(account =>
+          account.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          account.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          account.gameCategory.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          account.items.some(item => item.toLowerCase().includes(searchQuery.toLowerCase()))
+        )
+      }
+
+      setAccounts(processedAccounts)
+    } catch (error) {
+      console.error('Error loading accounts:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [gameFilter, priceFilter, sortBy, searchQuery])
+
+  useEffect(() => {
+    loadAccounts()
+  }, [loadAccounts])
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadAccounts()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [loadAccounts, searchQuery])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading accounts...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Browse Roblox Accounts
-          </h1>
-          <p className="text-lg text-gray-600">
-            Find the perfect account with rare items, pets, and in-game currency
-          </p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+              Browse Roblox Accounts
+            </h1>
+            <p className="text-lg text-gray-600">
+              Find the perfect account with rare items, pets, and in-game currency
+            </p>
+          </div>
+          
+          {user && (
+            <Link to="/sell">
+              <Button className="bg-accent hover:bg-accent/90">
+                <Plus className="w-4 h-4 mr-2" />
+                Sell Account
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Filters & Search */}
@@ -132,13 +174,14 @@ export default function AccountListings() {
             </div>
 
             {/* Game Filter */}
-            <Select>
+            <Select value={gameFilter} onValueChange={setGameFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Game" />
               </SelectTrigger>
               <SelectContent>
-                {games.map((game) => (
-                  <SelectItem key={game} value={game.toLowerCase()}>
+                <SelectItem value="all">All Games</SelectItem>
+                {games.slice(1).map((game) => (
+                  <SelectItem key={game} value={game}>
                     {game}
                   </SelectItem>
                 ))}
@@ -146,13 +189,14 @@ export default function AccountListings() {
             </Select>
 
             {/* Price Filter */}
-            <Select>
+            <Select value={priceFilter} onValueChange={setPriceFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Price Range" />
               </SelectTrigger>
               <SelectContent>
-                {priceRanges.map((range) => (
-                  <SelectItem key={range} value={range.toLowerCase()}>
+                <SelectItem value="all">All Prices</SelectItem>
+                {priceRanges.slice(1).map((range) => (
+                  <SelectItem key={range} value={range}>
                     {range}
                   </SelectItem>
                 ))}
@@ -160,16 +204,14 @@ export default function AccountListings() {
             </Select>
 
             {/* Sort */}
-            <Select>
+            <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger>
                 <SelectValue placeholder="Sort By" />
               </SelectTrigger>
               <SelectContent>
-                {sortOptions.map((option) => (
-                  <SelectItem key={option} value={option.toLowerCase()}>
-                    {option}
-                  </SelectItem>
-                ))}
+                <SelectItem value="newest">Newest</SelectItem>
+                <SelectItem value="price-low">Price: Low to High</SelectItem>
+                <SelectItem value="price-high">Price: High to Low</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -199,102 +241,115 @@ export default function AccountListings() {
         </div>
 
         {/* Account Grid */}
-        <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-          {accounts.map((account) => (
-            <Card key={account.id} className="group hover:shadow-xl transition-all duration-300 border-2 hover:border-primary/20">
-              <div className="relative">
-                <img
-                  src={account.image}
-                  alt={account.title}
-                  className={`w-full object-cover rounded-t-lg ${viewMode === 'grid' ? 'h-48' : 'h-32'}`}
-                />
-                <Badge className="absolute top-3 left-3 bg-primary text-white">
-                  {account.game}
-                </Badge>
-                {account.featured && (
-                  <Badge className="absolute top-3 right-3 bg-accent text-white">
-                    Featured
+        {accounts.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Search className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No accounts found</h3>
+            <p className="text-gray-600 mb-6">
+              Try adjusting your search criteria or browse all accounts
+            </p>
+            {user && (
+              <Link to="/sell">
+                <Button className="bg-accent hover:bg-accent/90">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Be the first to sell!
+                </Button>
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
+            {accounts.map((account) => (
+              <Card key={account.id} className="group hover:shadow-xl transition-all duration-300 border-2 hover:border-primary/20">
+                <div className="relative">
+                  <img
+                    src={account.images[0] || 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=300&fit=crop'}
+                    alt={account.title}
+                    className={`w-full object-cover rounded-t-lg ${viewMode === 'grid' ? 'h-48' : 'h-32'}`}
+                  />
+                  <Badge className="absolute top-3 left-3 bg-primary text-white">
+                    {account.gameCategory}
                   </Badge>
-                )}
-                {account.verified && (
                   <div className="absolute bottom-3 right-3">
                     <Badge className="bg-green-500 text-white">
                       <CheckCircle className="w-3 h-3 mr-1" />
                       Verified
                     </Badge>
                   </div>
-                )}
-              </div>
-              
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg group-hover:text-primary transition-colors">
-                  {account.title}
-                </CardTitle>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-2xl font-bold text-primary">${account.price}</span>
-                    <span className="text-sm text-gray-500 line-through">${account.originalPrice}</span>
-                  </div>
-                  <Badge variant="outline" className="text-green-600 border-green-600">
-                    {Math.round(((account.originalPrice - account.price) / account.originalPrice) * 100)}% OFF
-                  </Badge>
                 </div>
-              </CardHeader>
-
-              <CardContent className="pt-0">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Seller: {account.seller}</span>
-                    <div className="flex items-center">
-                      <Star className="w-4 h-4 text-yellow-500 mr-1" />
-                      <span className="font-medium">{account.rating}</span>
+                
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg group-hover:text-primary transition-colors">
+                    {account.title}
+                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-2xl font-bold text-primary">${account.price}</span>
                     </div>
+                    <Badge variant="outline" className="text-blue-600 border-blue-600">
+                      Level {account.accountLevel}
+                    </Badge>
                   </div>
-                  
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-700">Includes:</p>
-                    <div className={`grid gap-1 ${viewMode === 'grid' ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                      {account.items.slice(0, viewMode === 'grid' ? 3 : 4).map((item, index) => (
-                        <div key={index} className="flex items-center text-sm text-gray-600">
-                          <CheckCircle className="w-3 h-3 text-green-500 mr-2 flex-shrink-0" />
-                          {item}
-                        </div>
-                      ))}
-                      {account.items.length > (viewMode === 'grid' ? 3 : 4) && (
-                        <p className="text-sm text-gray-500">
-                          +{account.items.length - (viewMode === 'grid' ? 3 : 4)} more items
-                        </p>
+                </CardHeader>
+
+                <CardContent className="pt-0">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">@{account.robloxUsername}</span>
+                      {account.robuxAmount > 0 && (
+                        <span className="text-yellow-600 font-medium">
+                          {account.robuxAmount.toLocaleString()} Robux
+                        </span>
                       )}
                     </div>
-                  </div>
+                    
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-700">Includes:</p>
+                      <div className={`grid gap-1 ${viewMode === 'grid' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                        {account.items.slice(0, viewMode === 'grid' ? 3 : 4).map((item, index) => (
+                          <div key={index} className="flex items-center text-sm text-gray-600">
+                            <CheckCircle className="w-3 h-3 text-green-500 mr-2 flex-shrink-0" />
+                            {item}
+                          </div>
+                        ))}
+                        {account.items.length > (viewMode === 'grid' ? 3 : 4) && (
+                          <p className="text-sm text-gray-500">
+                            +{account.items.length - (viewMode === 'grid' ? 3 : 4)} more items
+                          </p>
+                        )}
+                      </div>
+                    </div>
 
-                  <div className="flex items-center justify-between pt-2">
-                    <div className="flex items-center">
-                      <Shield className="w-4 h-4 text-primary mr-1" />
-                      <span className="text-sm text-gray-600">Trust Score: {account.trustScore}%</span>
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="flex items-center">
+                        <Shield className="w-4 h-4 text-primary mr-1" />
+                        <span className="text-sm text-gray-600">Escrow Protected</span>
+                      </div>
+                      {account.premiumStatus === 'active' && (
+                        <Badge className="bg-yellow-500 text-white text-xs">
+                          Premium
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className={`flex gap-2 mt-4 ${viewMode === 'list' ? 'flex-row' : 'flex-col'}`}>
+                      <Link to={`/account/${account.id}`} className="flex-1">
+                        <Button className="w-full bg-primary hover:bg-primary/90">
+                          View Details
+                        </Button>
+                      </Link>
+                      <Button variant="outline" className="flex-1">
+                        Add to Cart
+                      </Button>
                     </div>
                   </div>
-
-                  <div className={`flex gap-2 mt-4 ${viewMode === 'list' ? 'flex-row' : 'flex-col'}`}>
-                    <Button className="flex-1 bg-primary hover:bg-primary/90">
-                      View Details
-                    </Button>
-                    <Button variant="outline" className="flex-1">
-                      Add to Cart
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Load More */}
-        <div className="text-center mt-12">
-          <Button size="lg" variant="outline" className="px-8">
-            Load More Accounts
-          </Button>
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
